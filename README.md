@@ -1,5 +1,11 @@
 # Ebitengine game jam 2024
 
+## Run game
+
+```
+go run .
+```
+
 ## Build mobile
 ### Android
 

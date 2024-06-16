@@ -5,6 +5,12 @@ import (
 )
 
 var (
-	//go:embed runner.png
-	Runner_png []byte
+	//go:embed Archer-Walk.png
+	ArcherWalk_png []byte
+
+	//go:embed Archer-Idle.png
+	ArcherIdle_png []byte
+
+	//go:embed Background.png
+	Background_png []byte
 )
