@@ -30,9 +30,10 @@ const (
 )
 
 var (
-	archerWalkImage *ebiten.Image
-	archerIdleImage *ebiten.Image
-	bgImage         *ebiten.Image
+	archerWalkImage  *ebiten.Image
+	archerIdleImage  *ebiten.Image
+	forestItemsImage *ebiten.Image
+	bgImage          *ebiten.Image
 
 	bgWidth, bgHeight int
 )
@@ -43,7 +44,9 @@ type Game struct {
 	player   *Player
 	viewPort *ViewPort
 
-	reachEnd bool
+	isNextGoalRight bool
+	isReadyForJudge bool
+	currentStage    int
 }
 
 type Player struct {
@@ -73,6 +76,12 @@ func init() {
 	}
 	archerIdleImage = ebiten.NewImageFromImage(img)
 
+	img, _, err = image.Decode(bytes.NewReader(images.ForestItems_png))
+	if err != nil {
+		log.Fatal(err)
+	}
+	forestItemsImage = ebiten.NewImageFromImage(img)
+
 	img, _, err = image.Decode(bytes.NewReader(images.Background_png))
 	if err != nil {
 		log.Fatal(err)
@@ -82,11 +91,21 @@ func init() {
 	s := bgImage.Bounds().Size()
 	bgWidth = s.X
 	bgHeight = s.Y
-	fmt.Printf("bg width %d, height %d", bgWidth, bgHeight)
+	fmt.Printf("bg width %d, height %d\n", bgWidth, bgHeight)
 }
 
 func (g *Game) Update() error {
 	g.count++
+
+	if g.currentStage == 0 { // 最初の状態からスタート
+		g.player.positionX = startLinePosX
+		g.currentStage = 1
+		return nil
+	}
+
+	if g.player.positionX > 100 && g.player.positionX < 120 {
+		g.isReadyForJudge = true
+	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
 		g.player.isWalking = true
@@ -110,16 +129,14 @@ func (g *Game) Update() error {
 		if g.player.walkingBackwards {
 			if g.player.positionX > -40 {
 				g.player.positionX--
-				g.reachEnd = false
 			} else { // 画面左端に到達
-				g.reachEnd = true
+				judgeEnd(g, false)
 			}
 		} else {
 			if g.player.positionX < 438 {
 				g.player.positionX++
-				g.reachEnd = false
 			} else { // 画面右端に到達
-				g.reachEnd = true
+				judgeEnd(g, true)
 			}
 		}
 	} else {
@@ -131,8 +148,31 @@ func (g *Game) Update() error {
 	if g.player.positionX > 0 && g.player.positionX < 140 {
 		g.viewPort.positionX = g.player.positionX
 	}
-
 	return nil
+}
+
+func judgeEnd(g *Game, isRight bool) bool {
+	if !g.isReadyForJudge {
+		return false
+	}
+
+	if g.isNextGoalRight {
+		if isRight {
+			g.currentStage++
+			g.isNextGoalRight = false
+		} else {
+			g.currentStage = 0 // 逆端に到達 0から再スタート
+		}
+	} else {
+		if !isRight {
+			g.currentStage++
+			g.isNextGoalRight = true
+		} else {
+			g.currentStage = 0 // 逆端に到達 0から再スタート
+		}
+	}
+	g.isReadyForJudge = false
+	return (g.currentStage > 0) // 0階の場合は失敗
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
@@ -181,8 +221,10 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 
 func NewGame() (*Game, error) {
 	game := &Game{
-		player:   &Player{},
-		viewPort: &ViewPort{},
+		player:          &Player{},
+		viewPort:        &ViewPort{},
+		currentStage:    1,
+		isNextGoalRight: true,
 	}
 	return game, nil
 }
@@ -195,15 +237,19 @@ func debugPrint(g *Game, screen *ebiten.Image) {
 		playserStatus = "idle"
 	}*/
 
-	var end = ""
+	/*var end = ""
 	if g.reachEnd {
 		if g.player.positionX > 0 {
 			end = "forwardEnd"
 		} else {
 			end = "backwardEnd"
 		}
-	}
+	}*/
 
-	var msg = fmt.Sprintf("Player x,y=%d,%d viewPortX=%d end=%s", g.player.positionX, 0, g.viewPort.positionX, end)
+	var isReady = ""
+	if g.isReadyForJudge {
+		isReady = "*"
+	}
+	var msg = fmt.Sprintf("Player x,y=%d,%d viewPortX=%d stage=%d %s", g.player.positionX, 0, g.viewPort.positionX, g.currentStage, isReady)
 	ebitenutil.DebugPrint(screen, msg)
 }

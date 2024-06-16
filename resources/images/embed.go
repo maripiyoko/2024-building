@@ -13,4 +13,7 @@ var (
 
 	//go:embed Background.png
 	Background_png []byte
+
+	//go:embed forest_items.png
+	ForestItems_png []byte
 )
