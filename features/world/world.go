@@ -104,7 +104,13 @@ func (g *Game) Update() error {
 	}
 
 	if g.player.positionX > 100 && g.player.positionX < 120 {
+		// 真ん中くらいまできたら次のステージへ進めるか判定可能にする
 		g.isReadyForJudge = true
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		g.currentStage = 0
+		return nil
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
@@ -178,6 +184,11 @@ func judgeEnd(g *Game, isRight bool) bool {
 func (g *Game) Draw(screen *ebiten.Image) {
 	drawBackground(g, screen)
 
+	if g.currentStage == 8 {
+		drawEndroll(screen)
+		return // ゲーム終了
+	}
+
 	op := &ebiten.DrawImageOptions{}
 	if g.player.walkingBackwards { // 左右どちら向きか判定
 		op.GeoM.Scale(-1, 1)
@@ -217,6 +228,10 @@ func drawBackground(g *Game, screen *ebiten.Image) {
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return screenWidth, screenHeight
+}
+
+func drawEndroll(screen *ebiten.Image) {
+	ebitenutil.DebugPrint(screen, "You Win!")
 }
 
 func NewGame() (*Game, error) {
