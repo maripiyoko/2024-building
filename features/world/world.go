@@ -18,6 +18,9 @@ const (
 	screenWidth  = 320
 	screenHeight = 240
 
+	baseLineHeight = 34
+	startLinePosX  = 30
+
 	frameOX           = 0
 	frameOY           = 0
 	frameWidth        = 100
@@ -29,16 +32,32 @@ const (
 var (
 	archerWalkImage *ebiten.Image
 	archerIdleImage *ebiten.Image
-	backgroundImage *ebiten.Image
+	bgImage         *ebiten.Image
+
+	bgWidth, bgHeight int
 )
 
 type Game struct {
-	count          int
-	walkCount      int
-	isWalking      bool
-	walkingForward bool
+	count int
 
-	playerPositionX int
+	player   *Player
+	viewPort *ViewPort
+
+	reachEnd bool
+}
+
+type Player struct {
+	idleCount int
+	walkCount int
+
+	isWalking        bool
+	walkingBackwards bool
+
+	positionX int
+}
+
+type ViewPort struct {
+	positionX int
 }
 
 func init() {
@@ -58,40 +77,59 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	backgroundImage = ebiten.NewImageFromImage(img)
+	bgImage = ebiten.NewImageFromImage(img)
+
+	s := bgImage.Bounds().Size()
+	bgWidth = s.X
+	bgHeight = s.Y
+	fmt.Printf("bg width %d, height %d", bgWidth, bgHeight)
 }
 
 func (g *Game) Update() error {
+	g.count++
+
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
-		g.isWalking = true
-		g.walkingForward = true
+		g.player.isWalking = true
+		g.player.walkingBackwards = false
 	}
 	if inpututil.IsKeyJustReleased(ebiten.KeyArrowRight) {
-		g.isWalking = false
+		g.player.isWalking = false
+		g.player.walkingBackwards = false
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
-		g.isWalking = true
-		g.walkingForward = false
+		g.player.isWalking = true
+		g.player.walkingBackwards = true
 	}
 	if inpututil.IsKeyJustReleased(ebiten.KeyArrowLeft) {
-		g.isWalking = false
-		g.walkingForward = true
+		g.player.isWalking = false
+		g.player.walkingBackwards = false
 	}
 
-	if g.isWalking {
-		g.walkCount++
-		if g.walkingForward {
-			if g.playerPositionX < 290 {
-				g.playerPositionX++
+	if g.player.isWalking {
+		g.player.walkCount++
+		if g.player.walkingBackwards {
+			if g.player.positionX > -40 {
+				g.player.positionX--
+				g.reachEnd = false
+			} else { // 画面左端に到達
+				g.reachEnd = true
 			}
 		} else {
-			if g.playerPositionX > 0 {
-				g.playerPositionX--
+			if g.player.positionX < 438 {
+				g.player.positionX++
+				g.reachEnd = false
+			} else { // 画面右端に到達
+				g.reachEnd = true
 			}
 		}
 	} else {
-		g.count++
-		g.walkCount = 0
+		g.player.idleCount++
+		g.player.walkCount = 0
+	}
+
+	// 画面がスクロール可能かチェック
+	if g.player.positionX > 0 && g.player.positionX < 140 {
+		g.viewPort.positionX = g.player.positionX
 	}
 
 	return nil
@@ -101,16 +139,24 @@ func (g *Game) Draw(screen *ebiten.Image) {
 	drawBackground(g, screen)
 
 	op := &ebiten.DrawImageOptions{}
-	op.GeoM.Translate(-float64(screenWidth)/2, float64(30))
-	op.GeoM.Translate(screenWidth/2, screenHeight/2)
+	if g.player.walkingBackwards { // 左右どちら向きか判定
+		op.GeoM.Scale(-1, 1)
+		op.GeoM.Translate(frameWidth, 0)
+	}
+	// キャラの位置を初期値へ移動
+	op.GeoM.Translate(-float64(frameWidth)/2, -float64(frameHeight)/2)
+	op.GeoM.Translate(startLinePosX, screenHeight-baseLineHeight)
+	// 画面がスクロール不可の場合、キャラのみ移動
+	diffX := g.player.positionX - g.viewPort.positionX
+	op.GeoM.Translate(float64(diffX), 0)
 
 	var i = 0
 	var targetImage *ebiten.Image
-	if g.isWalking {
-		i = (g.walkCount / 5) % frameCountWalking
+	if g.player.isWalking {
+		i = (g.player.walkCount / 5) % frameCountWalking
 		targetImage = archerWalkImage
 	} else {
-		i = (g.count / 5) % frameCountIdle
+		i = (g.player.idleCount / 5) % frameCountIdle
 		targetImage = archerIdleImage
 	}
 	sx, sy := frameOX+i*frameWidth, frameOY
@@ -122,10 +168,11 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 func drawBackground(g *Game, screen *ebiten.Image) {
 	op := &ebiten.DrawImageOptions{}
-	sx := g.playerPositionX
-	op.GeoM.Translate(-float64(sx), -float64(620)/2)
+	sx := g.viewPort.positionX
 	op.GeoM.Scale(0.5, 0.5)
-	screen.DrawImage(backgroundImage, op)
+	op.GeoM.Translate(-float64(sx), -float64(154))
+
+	screen.DrawImage(bgImage, op)
 }
 
 func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
@@ -133,17 +180,30 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 }
 
 func NewGame() (*Game, error) {
-	game := &Game{}
+	game := &Game{
+		player:   &Player{},
+		viewPort: &ViewPort{},
+	}
 	return game, nil
 }
 
 func debugPrint(g *Game, screen *ebiten.Image) {
-	var playserStatus = ""
-	if g.isWalking {
+	/*var playserStatus = ""
+	if g.player.isWalking {
 		playserStatus = "walking"
 	} else {
 		playserStatus = "idle"
+	}*/
+
+	var end = ""
+	if g.reachEnd {
+		if g.player.positionX > 0 {
+			end = "forwardEnd"
+		} else {
+			end = "backwardEnd"
+		}
 	}
-	var msg = fmt.Sprintf("Player x,y=%d,%d (%s) ", g.playerPositionX, 0, playserStatus)
+
+	var msg = fmt.Sprintf("Player x,y=%d,%d viewPortX=%d end=%s", g.player.positionX, 0, g.viewPort.positionX, end)
 	ebitenutil.DebugPrint(screen, msg)
 }
